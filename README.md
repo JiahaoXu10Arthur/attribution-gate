@@ -281,6 +281,9 @@ pytest -q
 Installs as `attribution-gate` and the shorter `attrgate`. Pure stdlib, so
 there is nothing else to resolve.
 
+See [DESIGN.md](DESIGN.md) for why it is shaped this way, what was
+rejected, and what to check before changing it.
+
 ## License
 
 MIT
