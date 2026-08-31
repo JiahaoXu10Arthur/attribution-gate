@@ -828,3 +828,38 @@ def test_long_values_are_clipped_in_the_middle_not_the_end():
     b = "worst quality, low quality, bad anatomy, jpeg artifacts, watermark, bbb"
     assert _clip(a) != _clip(b)
     assert _clip(a).endswith("'") and _clip(b).endswith("'")
+
+
+# ------------------------------------------------- regression on real graphs
+
+def _real_workflows():
+    import pathlib
+    f = pathlib.Path(__file__).parent / "fixtures" / "real_workflows.json"
+    return json.loads(f.read_text(encoding="utf-8"))["cases"]
+
+
+def test_real_fixtures_cover_every_refusal_reason():
+    """Synthetic graphs prove the walker handles what it was written for.
+    They cannot prove it still refuses the things it used to refuse, or still
+    resolves what it used to resolve. These are real graphs, structure
+    untouched, names scrubbed."""
+    cases = _real_workflows()
+    blockers = {c["expect_blocker"] for c in cases}
+    assert "TriggerWord Toggle (LoraManager)" in blockers
+    assert "TIPO" in blockers
+    assert "no sampler" in blockers
+    assert any(c["expect"] == "resolved" for c in cases)
+
+
+@pytest.mark.parametrize("case", _real_workflows(),
+                         ids=lambda c: c["source"])
+def test_real_workflow_outcome_does_not_drift(case):
+    from attribution_gate.comfyui import positive_prompt
+    if case["expect"] == "resolved":
+        arm = positive_prompt(case["workflow"])
+        assert len(factors(arm)) == case["expect_factor_count"]
+    else:
+        with pytest.raises(ComfyUIError) as e:
+            positive_prompt(case["workflow"])
+        if case["expect_blocker"]:
+            assert case["expect_blocker"] in str(e.value)
