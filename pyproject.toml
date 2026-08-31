@@ -1,0 +1,34 @@
+[project]
+name = "attribution-gate"
+version = "0.1.0"
+description = "Refuse a causal claim that the two compared arms cannot support."
+readme = "README.md"
+authors = [{ name = "Jiahao Xu" }]
+requires-python = ">=3.9"
+license = { text = "MIT" }
+keywords = ["experiment", "ab-testing", "causal", "confound", "ablation",
+            "comfyui", "prompt-engineering", "evaluation"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "License :: OSI Approved :: MIT License",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+  "Topic :: Software Development :: Testing",
+]
+dependencies = []
+
+[project.optional-dependencies]
+test = ["pytest>=7"]
+
+[project.scripts]
+attribution-gate = "attribution_gate.__main__:main"
+# Short alias, because the full name is a mouthful to type in a loop.
+# Deliberately not "agate" -- that is an established data-analysis package,
+# and two installs fighting over one console script is a bad first impression.
+attrgate = "attribution_gate.__main__:main"
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["attribution_gate"]
