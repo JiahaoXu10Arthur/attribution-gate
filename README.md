@@ -1,5 +1,7 @@
 # attribution-gate
 
+[![test](https://github.com/JiahaoXu10Arthur/attribution-gate/actions/workflows/test.yml/badge.svg)](https://github.com/JiahaoXu10Arthur/attribution-gate/actions/workflows/test.yml)
+
 Refuse a causal claim that the two compared arms cannot support.
 
 You ran a two-arm comparison, looked at the results, and wrote down *why*.
