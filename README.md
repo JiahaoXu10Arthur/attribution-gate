@@ -34,7 +34,7 @@ if not v:                         # the experiment is fine, the claim is not
     print("re-credit to one of:", ", ".join(v.candidates))
 ```
 
-No dependencies, stdlib only. 89 tests, CI on Python 3.9, 3.11 and 3.13.
+No dependencies, stdlib only. 92 tests, CI on Python 3.9, 3.11 and 3.13.
 
 ## Why this exists
 

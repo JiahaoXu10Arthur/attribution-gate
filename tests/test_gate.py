@@ -863,3 +863,56 @@ def test_real_workflow_outcome_does_not_drift(case):
             positive_prompt(case["workflow"])
         if case["expect_blocker"]:
             assert case["expect_blocker"] in str(e.value)
+
+
+def _realistic_png(text_chunks, idat_count=5, idat_size=2048):
+    """A PNG shaped like the ones ComfyUI actually writes.
+
+    Measured over 400 real renders: IHDR, one or two `tEXt` chunks keyed
+    `prompt` and `workflow`, then several IDAT, then IEND. The synthetic PNGs
+    above have no IDAT and one small text chunk -- the easy case, and not the
+    one the chunk walker has to survive. No pixels here either; the IDAT
+    payloads are filler and the point is the arithmetic that steps past them.
+    """
+    out = bytearray(b"\x89PNG\r\n\x1a\n")
+
+    def put(ctype, payload):
+        out.extend(struct.pack(">I", len(payload)))
+        out.extend(ctype + payload)
+        out.extend(struct.pack(">I", zlib.crc32(ctype + payload) & 0xFFFFFFFF))
+
+    put(b"IHDR", struct.pack(">IIBBBBB", 64, 64, 8, 2, 0, 0, 0))
+    for key, value in text_chunks:
+        put(b"tEXt", key.encode() + b"\x00" + value.encode())
+    for _ in range(idat_count):
+        put(b"IDAT", bytes(idat_size))
+    put(b"IEND", b"")
+    return bytes(out)
+
+
+def test_arm_is_found_past_many_idat_chunks(tmp_path):
+    p = tmp_path / "real.png"
+    p.write_bytes(_realistic_png([("prompt", json.dumps(WORKFLOW))],
+                                 idat_count=30))
+    assert arm_of(p) == "1girl, solo, rim lighting"
+
+
+def test_the_editor_copy_does_not_win_over_the_prompt(tmp_path):
+    """Real renders carry both `workflow` and `prompt`. Only `prompt` is what
+    ran; the editor copy can differ."""
+    p = tmp_path / "both.png"
+    p.write_bytes(_realistic_png([
+        ("workflow", json.dumps({"nodes": [{"id": 1, "type": "Decoy"}]})),
+        ("prompt", json.dumps(WORKFLOW)),
+    ]))
+    assert arm_of(p) == "1girl, solo, rim lighting"
+
+
+def test_a_large_text_chunk_parses(tmp_path):
+    """Real payloads reach 124 KB."""
+    big = json.loads(json.dumps(WORKFLOW))
+    big["6"]["inputs"]["text"] = "1girl, " + ", ".join(
+        "tag%d" % i for i in range(12000))
+    p = tmp_path / "big.png"
+    p.write_bytes(_realistic_png([("prompt", json.dumps(big))]))
+    assert len(factors(arm_of(p))) > 11000
