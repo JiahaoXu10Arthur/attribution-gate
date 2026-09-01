@@ -123,7 +123,11 @@ had collected.
 
 **Numbers are censuses, not samples.** An earlier version sampled 300 files and
 reported 89/6/4 where the census said 85.6/8.0/4.9 — and the census took
-seconds.
+seconds. Those three buckets are the README's six-row outcome table collapsed:
+trigger-word refusals, resolved, and every other refusal except img2img
+(47 + 27 + 5 = 79 of 1,608, so 4.9%). Held against the six rows one at a time
+the third number matches none of them, which is worth saying here rather than
+leaving to whoever tries.
 
 **Two fixture kinds.** Synthetic graphs prove the walker handles what it was
 written for. `tests/fixtures/real_workflows.json` — six real graphs, one per
