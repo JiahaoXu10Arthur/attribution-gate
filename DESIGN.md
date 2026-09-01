@@ -121,6 +121,23 @@ not exist. Parsing would buy a better *message* — "styleA vs styleB" instead o
 "lora settings differ" — at the cost of a second copy of renderdb's shape
 table, and of being silent again on the fifth shape.
 
+## Decision: a chunk that did not decode is not a chunk that is not there
+
+The PNG walker skips a malformed chunk rather than abandoning the file, which
+is right — one bad ancillary chunk should not cost you a readable workflow.
+But skipping left no trace, so a `prompt` chunk that failed to decompress
+produced exactly what a file with no workflow produces. The error then said
+`has no embedded ComfyUI workflow`, listed the text chunks present (omitting
+the one that failed, because it never made it into the dict), and offered a
+cause the reader had invented: *"images re-saved by an editor usually lose it."*
+All three wrong, about a file whose workflow was sitting right there.
+
+An undecodable chunk now goes into the result as `_Undecodable(why)` — the same
+move as `_Unknown` in the residue reader, for the same reason. `read_workflow`
+tells the two apart and reports the zlib error verbatim. The skip survives:
+a broken *unrelated* chunk still costs nothing, and there is a test pinning
+that.
+
 ## Rejected: an `ignore=` escape hatch for known-inert factors
 
 The abuse surface is precisely the stated primary use case. In an agent loop

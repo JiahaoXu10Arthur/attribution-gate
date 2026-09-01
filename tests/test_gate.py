@@ -990,3 +990,32 @@ def test_a_lora_node_shape_nobody_has_seen_yet_is_still_compared(tmp_path):
     a, b = _lora_png_pair(tmp_path, invented("styleA"), invented("styleB"))
     v = adjudicate(arm_of(a), arm_of(b), "sunset")
     assert v.code == UNMODELLED and "lora settings" in v.reason
+
+
+def _broken_ztxt(key):
+    """A zTXt chunk whose payload is not valid zlib."""
+    return (b"zTXt", key.encode() + b"\x00" + b"\x00" + b"not-actually-zlib")
+
+
+def test_an_undecodable_prompt_chunk_is_not_reported_as_a_missing_one(tmp_path):
+    """The walker skips a malformed chunk so one bad chunk cannot lose the
+    whole file -- but the prompt going missing that way then read as "this
+    image has no workflow", complete with a cause ("re-saved by an editor")
+    that is false, and a "chunks present" list that omitted the very chunk
+    that failed. Unreadable wearing the face of absent."""
+    p = tmp_path / "x.png"
+    p.write_bytes(_png([_broken_ztxt("prompt")]))
+    with pytest.raises(ComfyUIError) as e:
+        read_workflow(p)
+    msg = str(e.value)
+    assert "prompt" in msg
+    assert "no embedded ComfyUI workflow" not in msg
+    assert "re-saved by an editor" not in msg
+
+
+def test_one_broken_chunk_does_not_lose_a_readable_prompt(tmp_path):
+    """The skip itself was right, and must survive the fix."""
+    p = tmp_path / "y.png"
+    p.write_bytes(_png([_broken_ztxt("junk"),
+                        _text_chunk("prompt", json.dumps(WORKFLOW))]))
+    assert read_workflow(p)["3"]["class_type"] == "KSampler"

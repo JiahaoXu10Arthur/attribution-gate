@@ -153,6 +153,20 @@ class ComfyUIError(Exception):
     """The PNG carried no usable workflow, or one that cannot be resolved."""
 
 
+#: A chunk that is present in the file but did not decode. It stands in the
+#: result where the text would have been, so that "I could not decompress your
+#: prompt" cannot arrive as "this image has no prompt" -- two problems that
+#: send the user to different places, only one of which would be true.
+class _Undecodable(object):
+    __slots__ = ("why",)
+
+    def __init__(self, why: str):
+        self.why = why
+
+    def __repr__(self) -> str:
+        return "<undecodable: %s>" % self.why
+
+
 def read_text_chunks(png) -> Dict[str, str]:
     """Return every ``tEXt``/``zTXt``/``iTXt`` chunk in a PNG as ``{key: value}``.
 
@@ -191,8 +205,19 @@ def read_text_chunks(png) -> Dict[str, str]:
                 out[key.decode("latin-1")] = (
                     zlib.decompress(rest) if flag else rest
                 ).decode("utf-8", "replace")
-        except Exception:
-            # A malformed chunk is not a reason to abandon the whole file.
+        except Exception as exc:
+            # A malformed chunk is still not a reason to abandon the whole
+            # file. But it must not vanish either: a prompt chunk that failed
+            # to decompress used to leave no trace, so the file read as "no
+            # embedded ComfyUI workflow" -- with a cause the reader invented
+            # ("re-saved by an editor") and a chunks-present list that omitted
+            # the one chunk that failed. Unreadable wearing the face of absent.
+            try:
+                key = body.partition(b"\x00")[0].decode("latin-1")
+            except Exception:
+                continue
+            out.setdefault(key, _Undecodable(
+                "%s chunk: %s" % (ctype.decode("latin-1"), exc)))
             continue
     return out
 
@@ -206,6 +231,11 @@ def read_workflow(png) -> dict:
     """
     chunks = read_text_chunks(png)
     raw = chunks.get("prompt")
+    if isinstance(raw, _Undecodable):
+        raise ComfyUIError(
+            "%s carries a prompt chunk that did not decode (%s). The workflow "
+            "is there and unreadable, which is a different problem from an "
+            "image that never had one." % (Path(png).name, raw.why))
     if not raw:
         have = ", ".join(sorted(chunks)) or "none"
         raise ComfyUIError(
