@@ -127,7 +127,16 @@ _CONTROLLED = ("seed", "noise_seed", "steps", "cfg", "sampler_name",
 #: than by sitting on it. A checkpoint swap is the largest uncontrolled
 #: variable a workflow can carry, and it was passing green.
 _CONTROLLED_UPSTREAM = ("ckpt_name", "unet_name", "vae_name", "clip_name",
-                        "lora_name", "width", "height")
+                        "width", "height")
+
+#: Substring that marks a node as carrying LoRA settings. Matched against
+#: ``class_type``, not against input keys: ``lora_name`` matched zero of the
+#: six committed real fixtures while two of them load LoRAs, because the
+#: LoraManager family holds its stack in ``loras: {"__value__": [...]}`` or in
+#: ``lora_syntax``. The corpus behind those fixtures has no native
+#: ``LoraLoader`` at all, so the key-name check had never once fired on a real
+#: graph.
+_LORA_NODE = "lora"
 
 _MAX_DEPTH = 24
 
@@ -484,6 +493,27 @@ def _controlled(api: dict) -> dict:
             v = inputs.get(key)
             if isinstance(v, (str, int, float)) and not isinstance(v, bool):
                 out.setdefault(key, []).append(v)
+
+    # A gate does not need to parse the stack -- it needs to know whether both
+    # arms carried the same one. So every literal input on a LoRA node goes in
+    # as it stands, which compares a shape nobody has written a reader for yet
+    # exactly as well as a familiar one. Sorted, so node ids and ordering --
+    # which ComfyUI rewrites on every save -- cannot make identical stacks
+    # look different.
+    stack = []
+    for nid in sorted(api):
+        node = api.get(nid) or {}
+        if _LORA_NODE not in str(node.get("class_type") or "").lower():
+            continue
+        inputs = node.get("inputs") or {}
+        for key in sorted(inputs):
+            value = inputs[key]
+            if isinstance(value, list):
+                continue  # a wire, not a setting
+            stack.append("%s.%s=%s" % (node.get("class_type"), key,
+                                       json.dumps(value, sort_keys=True)))
+    if stack:
+        out["lora settings"] = [tuple(sorted(stack))]
 
     return {k: (v[0] if len(v) == 1 else tuple(v)) for k, v in out.items()}
 

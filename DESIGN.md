@@ -92,6 +92,35 @@ one positive factor — what a clean single-variable comparison looks like from
 outside — only one in five was actually controlled. The rest would have passed
 at exit 0.
 
+## Decision: LoRA settings are matched by node class, not by input key
+
+The residue list above says it reads the LoRA. For a long time it did not.
+
+`_CONTROLLED_UPSTREAM` looked for a flat `lora_name` input, which is what a
+native `LoraLoader` carries. The LoraManager family — which is what the corpus
+behind the fixtures actually uses — carries its stack as
+`loras: {"__value__": [...]}` or as `lora_syntax: "<lora:name:0.8>"`, and has no
+`lora_name` key at all. Across the six committed real fixtures, `lora_name`
+matches **zero** times while two of them load LoRAs, and the handoff records
+that native `LoraLoader` appears **0 times** in the 1608-render corpus. So this
+check had never once fired on a real graph, and a swapped LoRA — a second
+uncontrolled factor — came back `VALID` at exit 0.
+
+That is renderdb's fourth correction wearing different clothes: *"I looked for
+one shape and did not find it"* folded into *"there is no LoRA here"*. renderdb
+answered it with a registry of four readers. This package does not need one,
+because **a gate does not need to parse the stack — it needs to know whether
+both arms carried the same one.** So any node whose `class_type` contains
+`lora` contributes all of its literal inputs to the residue, as they stand,
+sorted so that node ids and ordering (which ComfyUI rewrites on every save)
+cannot make identical stacks look different.
+
+The property worth keeping: a shape nobody has written a reader for is compared
+exactly as well as a familiar one. There is a test for a node class that does
+not exist. Parsing would buy a better *message* — "styleA vs styleB" instead of
+"lora settings differ" — at the cost of a second copy of renderdb's shape
+table, and of being silent again on the fifth shape.
+
 ## Rejected: an `ignore=` escape hatch for known-inert factors
 
 The abuse surface is precisely the stated primary use case. In an agent loop

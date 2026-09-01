@@ -916,3 +916,77 @@ def test_a_large_text_chunk_parses(tmp_path):
     p = tmp_path / "big.png"
     p.write_bytes(_realistic_png([("prompt", json.dumps(big))]))
     assert len(factors(arm_of(p))) > 11000
+
+
+def _lora_png_pair(tmp_path, node_a, node_b, pos_a="1girl", pos_b="1girl, sunset"):
+    """Two arms identical but for the positive prompt and one LoRA node."""
+    def wf(pos, lora):
+        return {
+            "6": {"class_type": "CLIPTextEncode", "inputs": {"text": pos}},
+            "7": {"class_type": "CLIPTextEncode",
+                  "inputs": {"text": "worst quality"}},
+            "3": {"class_type": "KSampler",
+                  "inputs": {"seed": 1, "cfg": 5.0, "steps": 30,
+                             "positive": ["6", 0], "negative": ["7", 0]}},
+            "10": {"class_type": "CheckpointLoaderSimple",
+                   "inputs": {"ckpt_name": "base_v1.safetensors"}},
+            "50": lora,
+        }
+    a, b = tmp_path / "la.png", tmp_path / "lb.png"
+    a.write_bytes(_png([_text_chunk("prompt", json.dumps(wf(pos_a, node_a)))]))
+    b.write_bytes(_png([_text_chunk("prompt", json.dumps(wf(pos_b, node_b)))]))
+    return a, b
+
+
+def _manager_loader(name):
+    return {"class_type": "Lora Loader (LoraManager)",
+            "inputs": {"loras": {"__value__": [{"name": name, "strength": 0.8}]},
+                       "model": ["10", 0], "clip": ["10", 1], "text": ""}}
+
+
+def _manager_text_loader(name):
+    return {"class_type": "LoRA Text Loader (LoraManager)",
+            "inputs": {"lora_syntax": "<lora:%s:0.8>" % name,
+                       "model": ["10", 0], "clip": ["10", 1]}}
+
+
+@pytest.mark.parametrize("make", [_manager_loader, _manager_text_loader],
+                         ids=["Lora Loader (LoraManager)",
+                              "LoRA Text Loader (LoraManager)"])
+def test_a_lora_swap_blocks_the_verdict_whatever_node_shape_carries_it(
+        tmp_path, make):
+    """The residue check looked for a flat ``lora_name`` input. LoraManager
+    nodes do not have one -- they carry ``loras: {"__value__": [...]}`` or
+    ``lora_syntax``. Across the six committed real fixtures, ``lora_name``
+    matches zero times while two of them carry LoraManager loaders, and the
+    corpus behind them has no native ``LoraLoader`` at all. So this check had
+    never once fired on a real graph, and a swapped LoRA -- a second
+    uncontrolled factor -- came back VALID at exit 0."""
+    a, b = _lora_png_pair(tmp_path, make("styleA"), make("styleB"))
+    v = adjudicate(arm_of(a), arm_of(b), "sunset")
+    assert v.code == UNMODELLED and v.exit_code == 2
+
+
+@pytest.mark.parametrize("make", [_manager_loader, _manager_text_loader],
+                         ids=["Lora Loader (LoraManager)",
+                              "LoRA Text Loader (LoraManager)"])
+def test_the_same_lora_on_both_arms_does_not_block(tmp_path, make):
+    """Refusing every graph that carries a LoRA node would be the other
+    failure: the corpus is almost entirely LoraManager, so a gate that cannot
+    tell "same stack" from "different stack" would refuse everything."""
+    a, b = _lora_png_pair(tmp_path, make("styleA"), make("styleA"))
+    assert adjudicate(arm_of(a), arm_of(b), "sunset").code == VALID
+
+
+def test_a_lora_node_shape_nobody_has_seen_yet_is_still_compared(tmp_path):
+    """The point of matching the node class rather than an input key. renderdb
+    learned this the hard way: 43 renders wrote their LoRAs in a syntax no
+    reader knew, and came back "no LoRA nodes here" -- a confident absence,
+    which is what an unrecognised shape looks like. Comparing the literals as
+    they stand needs no reader, so a fifth shape costs nothing."""
+    invented = lambda n: {"class_type": "SomeFutureLoraStackNode",
+                          "inputs": {"stack_blob": {"entries": [n]},
+                                     "model": ["10", 0]}}
+    a, b = _lora_png_pair(tmp_path, invented("styleA"), invented("styleB"))
+    v = adjudicate(arm_of(a), arm_of(b), "sunset")
+    assert v.code == UNMODELLED and "lora settings" in v.reason
